@@ -17,7 +17,8 @@
       "PowerShell(cmd /c \"dir C:\\\\Users\\\\elimu\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\system-images\\\\android-35\")",
       "PowerShell(cmd /c \"dir C:\\\\Users\\\\elimu\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\system-images\\\\android-36\")",
       "PowerShell(cmd /c \"dir C:\\\\Users\\\\elimu\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\system-images\\\\android-35\\\\google_apis_playstore\")",
-      "PowerShell(cmd /c \"dir C:\\\\Users\\\\elimu\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\cmdline-tools\" 2>&1)"
+      "PowerShell(cmd /c \"dir C:\\\\Users\\\\elimu\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\cmdline-tools\" 2>&1)",
+      "Bash(Remove-Item *)"
     ]
   }
 }
