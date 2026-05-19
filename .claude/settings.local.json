@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx create-expo-app *)",
+      "Bash(npx expo *)",
+      "Bash(npm install *)",
+      "Bash(mkdir \"C:\\\\Users\\\\elimu\\\\Documents\\\\Projects\\\\Distributed-cyclists\\\\cycling-map\\\\src\\\\constants\" -Force)",
+      "Bash(mkdir \"C:\\\\Users\\\\elimu\\\\Documents\\\\Projects\\\\Distributed-cyclists\\\\cycling-map\\\\src\\\\osm\" -Force)",
+      "Bash(mkdir \"C:\\\\Users\\\\elimu\\\\Documents\\\\Projects\\\\Distributed-cyclists\\\\cycling-map\\\\src\\\\types\" -Force)",
+      "Bash(mkdir \"C:\\\\Users\\\\elimu\\\\Documents\\\\Projects\\\\Distributed-cyclists\\\\cycling-map\\\\src\\\\components\\\\map\" -Force)",
+      "Bash(mkdir \"C:\\\\Users\\\\elimu\\\\Documents\\\\Projects\\\\Distributed-cyclists\\\\cycling-map\\\\src\\\\hooks\" -Force)",
+      "PowerShell(java *)",
+      "PowerShell(cmd /c \"dir C:\\\\Users\\\\elimu\\\\AppData\\\\Local\\\\Android\\\\Sdk\")",
+      "PowerShell(cmd /c \"dir C:\\\\Users\\\\elimu\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\build-tools\")",
+      "PowerShell(cmd /c \"dir C:\\\\Users\\\\elimu\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platforms\")",
+      "PowerShell(cmd /c \"dir C:\\\\Users\\\\elimu\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\system-images\")",
+      "PowerShell(cmd /c \"dir C:\\\\Users\\\\elimu\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\system-images\\\\android-35\")",
+      "PowerShell(cmd /c \"dir C:\\\\Users\\\\elimu\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\system-images\\\\android-36\")",
+      "PowerShell(cmd /c \"dir C:\\\\Users\\\\elimu\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\system-images\\\\android-35\\\\google_apis_playstore\")",
+      "PowerShell(cmd /c \"dir C:\\\\Users\\\\elimu\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\cmdline-tools\" 2>&1)"
+    ]
+  }
+}
