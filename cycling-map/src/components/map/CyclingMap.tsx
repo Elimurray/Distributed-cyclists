@@ -5,12 +5,14 @@ import { REGIONS } from '../../constants/regions'
 import { useOSMData } from '../../hooks/useOSMData'
 import { useFeatures } from '../../hooks/useFeatures'
 import { useDeviceId } from '../../hooks/useDeviceId'
+import { useVotes } from '../../hooks/useVotes'
 import { isWay, isNode, isBikeParking, isBikeRepair, wayToLatLngs } from '../../osm/cycling'
 import { snapToNearestWay, SnapResult } from '../../osm/snap'
 import { FEATURE_TYPE_META } from '../../constants/featureTypes'
-import { ConditionStatus, FeatureType } from '../../types/feature'
+import { ConditionStatus, FeatureType, MapFeature } from '../../types/feature'
 import { SyncStatusBar } from '../sync/SyncStatusBar'
 import { ReportSheet } from './ReportSheet'
+import { FeatureDetailSheet } from './FeatureDetailSheet'
 
 const HAMILTON = REGIONS.hamilton
 const CYCLEWAY_COLOUR = '#2E86AB'
@@ -27,11 +29,13 @@ const INITIAL_REGION: Region = {
 export function CyclingMap() {
   const mapRef = useRef<MapView>(null)
   const { elements, loading, error } = useOSMData(HAMILTON.bounds)
-  const { features, addFeature } = useFeatures()
+  const { features, addFeature, removeFeature } = useFeatures()
   const deviceId = useDeviceId()
 
   const [reporting, setReporting] = useState(false)
   const [pendingLocation, setPendingLocation] = useState<SnapResult | null>(null)
+  const [selectedFeature, setSelectedFeature] = useState<MapFeature | null>(null)
+  const votes = useVotes(selectedFeature?.id, deviceId)
 
   const ways = elements.filter(isWay)
   const parkingNodes = elements.filter(isBikeParking)
@@ -45,6 +49,7 @@ export function CyclingMap() {
 
   const handleReportSubmit = (data: { type: FeatureType; status: ConditionStatus; title: string; description?: string }) => {
     if (!pendingLocation || !deviceId) return
+    const expiryMs = FEATURE_TYPE_META[data.type].defaultExpiryMs
     addFeature({
       type: data.type,
       status: data.status,
@@ -58,8 +63,15 @@ export function CyclingMap() {
       reportedBy: deviceId,
       region: 'hamilton',
       osmWayId: pendingLocation.osmWayId,
+      expiresAt: expiryMs ? new Date(Date.now() + expiryMs).toISOString() : undefined,
     })
     setPendingLocation(null)
+  }
+
+  const handleRemove = () => {
+    if (!selectedFeature) return
+    removeFeature(selectedFeature.id)
+    setSelectedFeature(null)
   }
 
   return (
@@ -108,8 +120,7 @@ export function CyclingMap() {
             key={feature.id}
             coordinate={{ latitude: feature.coordinates.lat, longitude: feature.coordinates.lng }}
             pinColor={FEATURE_TYPE_META[feature.type].color}
-            title={feature.title}
-            description={feature.description ?? `${FEATURE_TYPE_META[feature.type].label} · reported by ${feature.reportedBy.slice(0, 4)}`}
+            onPress={() => setSelectedFeature(feature)}
           />
         ))}
       </MapView>
@@ -137,6 +148,18 @@ export function CyclingMap() {
         location={pendingLocation}
         onCancel={() => setPendingLocation(null)}
         onSubmit={handleReportSubmit}
+      />
+
+      <FeatureDetailSheet
+        feature={selectedFeature}
+        isOwner={selectedFeature?.reportedBy === deviceId}
+        confirmations={votes.confirmations}
+        flags={votes.flags}
+        myVote={votes.myVote}
+        onClose={() => setSelectedFeature(null)}
+        onConfirm={() => votes.castVote('confirm')}
+        onFlag={() => votes.castVote('flag')}
+        onRemove={handleRemove}
       />
 
       {loading && (

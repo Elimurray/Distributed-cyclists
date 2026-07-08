@@ -25,8 +25,6 @@ export interface MapFeature {
   reportedAt: string
   updatedAt: string
   expiresAt?: string
-  confirmations: number
-  flags: number
   region: 'hamilton' | 'tauranga'
   osmWayId?: string
 }

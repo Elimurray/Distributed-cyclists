@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { v4 as uuidv4 } from 'uuid'
-import { ydoc, yFeatures } from '../crdt/ydoc'
+import { deleteVotesForFeature, ydoc, yFeatures } from '../crdt/ydoc'
 import { MapFeature } from '../types/feature'
 
-type NewFeature = Omit<MapFeature, 'id' | 'reportedAt' | 'updatedAt' | 'confirmations' | 'flags'>
+type NewFeature = Omit<MapFeature, 'id' | 'reportedAt' | 'updatedAt'>
 
 function snapshot(): MapFeature[] {
   return Array.from(yFeatures.values())
@@ -26,8 +26,6 @@ export function useFeatures() {
       id,
       reportedAt: now,
       updatedAt: now,
-      confirmations: 0,
-      flags: 0,
     }
     ydoc.transact(() => {
       yFeatures.set(id, full)
@@ -46,6 +44,7 @@ export function useFeatures() {
   const removeFeature = useCallback((id: string) => {
     ydoc.transact(() => {
       yFeatures.delete(id)
+      deleteVotesForFeature(id)
     })
   }, [])
 

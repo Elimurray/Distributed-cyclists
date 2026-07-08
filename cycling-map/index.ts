@@ -1,4 +1,5 @@
 import './src/crdt/polyfills';
+import './src/crdt/expiry';
 
 import { registerRootComponent } from 'expo';
 
