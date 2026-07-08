@@ -24,12 +24,22 @@ interface CachedData {
   data: OverpassResponse
 }
 
+const REQUEST_TIMEOUT_MS = 15_000
+
 async function postToEndpoint(url: string, query: string): Promise<Response> {
-  return fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: `data=${encodeURIComponent(query)}`,
-  })
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+
+  try {
+    return await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `data=${encodeURIComponent(query)}`,
+      signal: controller.signal,
+    })
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
 export async function fetchCyclingData(bounds: BoundingBox): Promise<OverpassResponse> {

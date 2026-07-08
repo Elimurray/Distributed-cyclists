@@ -3,12 +3,15 @@ import { StyleSheet, View, Text, ActivityIndicator } from 'react-native'
 import MapView, { Polyline, Marker, Region } from 'react-native-maps'
 import { REGIONS } from '../../constants/regions'
 import { useOSMData } from '../../hooks/useOSMData'
+import { useFeatures } from '../../hooks/useFeatures'
 import { isWay, isNode, isBikeParking, isBikeRepair, wayToLatLngs } from '../../osm/cycling'
+import { SyncStatusBar } from '../sync/SyncStatusBar'
 
 const HAMILTON = REGIONS.hamilton
 const CYCLEWAY_COLOUR = '#2E86AB'
 const PARKING_COLOUR = '#2A9D8F'
 const REPAIR_COLOUR = '#E9C46A'
+const SYNCED_FEATURE_COLOUR = '#E85D9C'
 
 const INITIAL_REGION: Region = {
   latitude: HAMILTON.center.lat,
@@ -20,6 +23,7 @@ const INITIAL_REGION: Region = {
 export function CyclingMap() {
   const mapRef = useRef<MapView>(null)
   const { elements, loading, error } = useOSMData(HAMILTON.bounds)
+  const { features } = useFeatures()
 
   const ways = elements.filter(isWay)
   const parkingNodes = elements.filter(isBikeParking)
@@ -64,7 +68,19 @@ export function CyclingMap() {
             title="Bike Repair"
           />
         ))}
+
+        {features.map(feature => (
+          <Marker
+            key={feature.id}
+            coordinate={{ latitude: feature.coordinates.lat, longitude: feature.coordinates.lng }}
+            pinColor={SYNCED_FEATURE_COLOUR}
+            title={feature.title}
+            description={`${feature.type} · reported by ${feature.reportedBy.slice(0, 4)}`}
+          />
+        ))}
       </MapView>
+
+      <SyncStatusBar />
 
       {loading && (
         <View style={styles.overlay}>
