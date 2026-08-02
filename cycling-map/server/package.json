@@ -1,0 +1,16 @@
+{
+  "name": "cycling-map-relay",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "relay.mjs",
+  "scripts": {
+    "start": "node relay.mjs"
+  },
+  "dependencies": {
+    "yjs": "13.6.30",
+    "y-protocols": "1.0.7",
+    "lib0": "0.2.117",
+    "ws": "8.21.0"
+  }
+}
