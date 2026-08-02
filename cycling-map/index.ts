@@ -1,4 +1,5 @@
 import './src/crdt/polyfills';
+import './src/debug/errorLog';
 import './src/crdt/persistence';
 import './src/crdt/expiry';
 import './src/crdt/pendingSync';

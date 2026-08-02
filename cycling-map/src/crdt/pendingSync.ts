@@ -1,22 +1,21 @@
-// Whether the local doc has diverged from the last state we know was actually
-// confirmed synced with the relay, so the UI can show "unsynced changes" instead of
-// silently pretending everything's up to date.
+// Whether there's a local edit that was made while genuinely disconnected from the
+// relay, so the UI can show "unsynced changes" instead of silently pretending
+// everything's up to date.
 //
-// Deliberately not an in-memory edit counter — that resets to 0 on every app restart
-// regardless of whether the doc still holds genuinely unsynced content, which is wrong:
-// force-closing the app while offline after an edit would silently drop the indicator
-// even though nothing had actually synced yet. Comparing persisted state vectors
-// survives restarts correctly by construction.
+// An edit made while *connected* was, for practical purposes, already sent — Yjs
+// broadcasts updates continuously over an open socket as they happen, there's no
+// batching/queueing step to wait on. So the only real "pending" state is: an edit
+// happened while offline, and we haven't reconnected since.
+//
+// Persisted (not just in-memory) so this survives an app restart while still offline —
+// an earlier in-memory-only version of this reset to "not pending" on relaunch even
+// though the doc still held genuinely unsynced content, which is wrong.
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import * as Y from 'yjs'
 import { ydoc } from './ydoc'
 import { provider } from './provider'
 
-const LAST_SYNCED_KEY = 'cycling-map:last-synced-state-vector'
+const STORAGE_KEY = 'cycling-map:has-pending-changes'
 
-// "Nothing has ever synced" is treated the same as "last synced state was empty" —
-// avoids a false-positive pending indicator on a fresh install with an empty doc.
-let lastSyncedStateVector: Uint8Array = Y.encodeStateVector(new Y.Doc())
 let hasPendingChanges = false
 const listeners = new Set<() => void>()
 
@@ -24,46 +23,40 @@ function notify() {
   listeners.forEach(listener => listener())
 }
 
-function stateVectorsEqual(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.length !== b.length) return false
-  for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return false
-  }
-  return true
-}
-
-function recomputePending() {
-  const current = Y.encodeStateVector(ydoc)
-  const next = !stateVectorsEqual(current, lastSyncedStateVector)
-  if (next !== hasPendingChanges) {
-    hasPendingChanges = next
-    notify()
+async function setPending(value: boolean) {
+  if (value === hasPendingChanges) return
+  hasPendingChanges = value
+  notify()
+  try {
+    await AsyncStorage.setItem(STORAGE_KEY, value ? 'true' : 'false')
+  } catch (err) {
+    console.warn('[pendingSync] failed to persist pending flag', err)
   }
 }
 
 async function init() {
-  const stored = await AsyncStorage.getItem(LAST_SYNCED_KEY)
-  if (stored) {
-    lastSyncedStateVector = Buffer.from(stored, 'base64')
+  const stored = await AsyncStorage.getItem(STORAGE_KEY)
+  if (stored === 'true') {
+    hasPendingChanges = true
+    notify()
   }
-  recomputePending()
 }
 
 init()
 
-ydoc.on('update', () => {
-  recomputePending()
+ydoc.on('update', (_update: Uint8Array, origin: unknown) => {
+  // Only genuinely local transactions (origin null) — see the same distinction used in
+  // Milestone 4's votes fix and in persistence.ts's hydration origin.
+  if (origin !== null) return
+  if (!provider.wsconnected) {
+    setPending(true)
+  }
 })
 
-provider.on('sync', async (isSynced: boolean) => {
-  if (!isSynced) return
-  lastSyncedStateVector = Y.encodeStateVector(ydoc)
-  try {
-    await AsyncStorage.setItem(LAST_SYNCED_KEY, Buffer.from(lastSyncedStateVector).toString('base64'))
-  } catch (err) {
-    console.warn('[pendingSync] failed to persist last-synced state vector', err)
+provider.on('sync', (isSynced: boolean) => {
+  if (isSynced) {
+    setPending(false)
   }
-  recomputePending()
 })
 
 export function getHasPendingChanges(): boolean {

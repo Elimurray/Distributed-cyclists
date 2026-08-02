@@ -1,6 +1,6 @@
 module.exports = {
   expo: {
-    name: "cycling-map",
+    name: "Cycling Map",
     slug: "cycling-map",
     version: "1.0.0",
     orientation: "portrait",
