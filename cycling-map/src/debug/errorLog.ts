@@ -35,6 +35,18 @@ export async function getErrorLog(): Promise<LoggedError[]> {
   }
 }
 
+// Non-fatal diagnostics for things that were handled but still worth seeing from the
+// Debug screen during a field session — a network path that failed and fell back, say.
+// The global handler below only ever sees *unhandled* errors, so anything caught in a
+// .catch() would otherwise be invisible to a tester without a laptop attached.
+export function logNonFatal(message: string): void {
+  appendError({
+    message,
+    isFatal: false,
+    timestamp: new Date().toISOString(),
+  })
+}
+
 export async function clearErrorLog(): Promise<void> {
   await AsyncStorage.removeItem(STORAGE_KEY)
 }

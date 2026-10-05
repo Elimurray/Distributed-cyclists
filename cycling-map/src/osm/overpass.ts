@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { BoundingBox, OverpassResponse } from '../types/osm'
+import { logNonFatal } from '../debug/errorLog'
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
 const ENDPOINTS = [
@@ -7,6 +8,16 @@ const ENDPOINTS = [
   'https://overpass.kumi.systems/api/interpreter',
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ]
+
+// Overpass instances reject clients that don't identify themselves: overpass-api.de
+// answers 406 to OkHttp's default header, which is exactly what React Native's fetch
+// sends on Android, so every request from the app was being refused before it ran.
+// Identifying the app is also what the Overpass usage policy asks for.
+const USER_AGENT = 'CyclingMap/1.0 (University of Waikato ENGEN582 research project)'
+
+// Public Overpass instances are slow and frequently return 504 under load, so one pass
+// over the endpoints isn't enough to conclude the data is unreachable.
+const MAX_ATTEMPTS = 2
 
 export function buildCyclingQuery(bounds: BoundingBox): string {
   const { south, west, north, east } = bounds
@@ -24,7 +35,9 @@ interface CachedData {
   data: OverpassResponse
 }
 
-const REQUEST_TIMEOUT_MS = 15_000
+// Must exceed the [timeout:30] the query itself grants the server, otherwise we abort a
+// request the server is still legitimately working on and report it as a network error.
+const REQUEST_TIMEOUT_MS = 35_000
 
 async function postToEndpoint(url: string, query: string): Promise<Response> {
   const controller = new AbortController()
@@ -33,7 +46,10 @@ async function postToEndpoint(url: string, query: string): Promise<Response> {
   try {
     return await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': USER_AGENT,
+      },
       body: `data=${encodeURIComponent(query)}`,
       signal: controller.signal,
     })
@@ -42,38 +58,65 @@ async function postToEndpoint(url: string, query: string): Promise<Response> {
   }
 }
 
+async function readCache(key: string): Promise<CachedData | null> {
+  try {
+    const cached = await AsyncStorage.getItem(key)
+    return cached ? (JSON.parse(cached) as CachedData) : null
+  } catch (err) {
+    console.warn('[OSM] failed to read cache', err)
+    return null
+  }
+}
+
 export async function fetchCyclingData(bounds: BoundingBox): Promise<OverpassResponse> {
   const key = cacheKey(bounds)
 
-  const cached = await AsyncStorage.getItem(key)
-  if (cached) {
-    const parsed: CachedData = JSON.parse(cached)
-    if (Date.now() - parsed.fetchedAt < CACHE_TTL_MS) {
-      console.log('[OSM] Returning cached data')
-      return parsed.data
-    }
+  const cached = await readCache(key)
+  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
+    console.log('[OSM] Returning cached data')
+    return cached.data
   }
 
   const query = buildCyclingQuery(bounds)
-  let lastError: string = 'No endpoints tried'
+  const failures: string[] = []
 
-  for (const url of ENDPOINTS) {
-    try {
-      const response = await postToEndpoint(url, query)
-      if (!response.ok) {
-        lastError = `HTTP ${response.status} from ${url}`
-        console.warn(`[OSM] ${lastError}`)
-        continue
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    for (const url of ENDPOINTS) {
+      try {
+        const response = await postToEndpoint(url, query)
+        if (!response.ok) {
+          failures.push(`HTTP ${response.status} from ${url}`)
+          console.warn(`[OSM] HTTP ${response.status} from ${url}`)
+          continue
+        }
+        const data: OverpassResponse = await response.json()
+        console.log(`[OSM] Fetched ${data.elements.length} elements from ${url}`)
+
+        // Deliberately isolated: a failed cache write used to land in the catch below,
+        // which reported a successful fetch as a network error and threw the data away.
+        try {
+          await AsyncStorage.setItem(key, JSON.stringify({ fetchedAt: Date.now(), data }))
+        } catch (err) {
+          console.warn('[OSM] failed to cache response', err)
+        }
+
+        return data
+      } catch (err) {
+        failures.push(`Network error from ${url}: ${err}`)
+        console.warn(`[OSM] Network error from ${url}: ${err}`)
       }
-      const data: OverpassResponse = await response.json()
-      console.log(`[OSM] Fetched ${data.elements.length} elements from ${url}`)
-      await AsyncStorage.setItem(key, JSON.stringify({ fetchedAt: Date.now(), data }))
-      return data
-    } catch (err) {
-      lastError = `Network error from ${url}: ${err}`
-      console.warn(`[OSM] ${lastError}`)
     }
   }
 
-  throw new Error(lastError)
+  // Every endpoint failed. Stale cycleways beat no cycleways in an offline-first app,
+  // so prefer expired data over an empty map if we have any.
+  if (cached) {
+    const ageHours = Math.round((Date.now() - cached.fetchedAt) / 3_600_000)
+    console.warn(`[OSM] All endpoints failed, falling back to cache ${ageHours}h old`)
+    logNonFatal(`OSM endpoints all failed; using cache ${ageHours}h old. ${failures.join(' | ')}`)
+    return cached.data
+  }
+
+  logNonFatal(`OSM load failed, no cache available. ${failures.join(' | ')}`)
+  throw new Error(failures.join(' | ') || 'No endpoints tried')
 }

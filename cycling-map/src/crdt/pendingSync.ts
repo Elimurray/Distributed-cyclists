@@ -17,6 +17,12 @@ import { provider } from './provider'
 const STORAGE_KEY = 'cycling-map:has-pending-changes'
 
 let hasPendingChanges = false
+
+// Whether a relay handshake has completed since launch. init()'s storage read is async
+// and can resolve *after* that handshake, in which case the stored value is already
+// stale and must not be allowed to resurrect a flag the sync just cleared.
+let hasSyncedThisSession = false
+
 const listeners = new Set<() => void>()
 
 function notify() {
@@ -24,9 +30,13 @@ function notify() {
 }
 
 async function setPending(value: boolean) {
-  if (value === hasPendingChanges) return
-  hasPendingChanges = value
-  notify()
+  if (value !== hasPendingChanges) {
+    hasPendingChanges = value
+    notify()
+  }
+  // Persisted unconditionally, even when the in-memory flag didn't move: returning
+  // early here would leave a stale 'true' on disk whenever the flag was already false,
+  // and 'sync' only fires on connect, so nothing would ever clear it again.
   try {
     await AsyncStorage.setItem(STORAGE_KEY, value ? 'true' : 'false')
   } catch (err) {
@@ -35,7 +45,21 @@ async function setPending(value: boolean) {
 }
 
 async function init() {
-  const stored = await AsyncStorage.getItem(STORAGE_KEY)
+  let stored: string | null = null
+  try {
+    stored = await AsyncStorage.getItem(STORAGE_KEY)
+  } catch (err) {
+    console.warn('[pendingSync] failed to read pending flag', err)
+    return
+  }
+
+  if (hasSyncedThisSession) {
+    // We synced while this read was in flight, so the doc is up to date regardless of
+    // what was on disk. Clear it rather than restore it.
+    setPending(false)
+    return
+  }
+
   if (stored === 'true') {
     hasPendingChanges = true
     notify()
@@ -55,6 +79,7 @@ ydoc.on('update', (_update: Uint8Array, origin: unknown) => {
 
 provider.on('sync', (isSynced: boolean) => {
   if (isSynced) {
+    hasSyncedThisSession = true
     setPending(false)
   }
 })
