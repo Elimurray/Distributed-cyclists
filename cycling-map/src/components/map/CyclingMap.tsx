@@ -1,12 +1,12 @@
-import React, { useRef, useState } from 'react'
-import { StyleSheet, View, Text, ActivityIndicator, Pressable } from 'react-native'
+import React, { useMemo, useRef, useState } from 'react'
+import { StyleSheet, View, Text, ActivityIndicator, Pressable, useWindowDimensions } from 'react-native'
 import MapView, { Polyline, Marker, Region, MapPressEvent } from 'react-native-maps'
 import { REGIONS } from '../../constants/regions'
 import { useOSMData } from '../../hooks/useOSMData'
 import { useFeatures } from '../../hooks/useFeatures'
 import { useDeviceId } from '../../hooks/useDeviceId'
 import { useVotes } from '../../hooks/useVotes'
-import { isWay, isNode, isBikeParking, isBikeRepair, wayToLatLngs } from '../../osm/cycling'
+import { isWay, isNode, isBikeParking, isBikeRepair, toCyclewayRuns, visibleCyclewayPaths } from '../../osm/cycling'
 import { snapToNearestWay, SnapResult } from '../../osm/snap'
 import { FEATURE_TYPE_META } from '../../constants/featureTypes'
 import { ConditionStatus, FeatureType, MapFeature } from '../../types/feature'
@@ -32,14 +32,32 @@ export function CyclingMap() {
   const { features, addFeature, removeFeature } = useFeatures()
   const deviceId = useDeviceId()
 
+  const { width: windowWidth } = useWindowDimensions()
+  const [viewport, setViewport] = useState<Region>(INITIAL_REGION)
   const [reporting, setReporting] = useState(false)
   const [pendingLocation, setPendingLocation] = useState<SnapResult | null>(null)
   const [selectedFeature, setSelectedFeature] = useState<MapFeature | null>(null)
   const votes = useVotes(selectedFeature?.id, deviceId)
 
-  const ways = elements.filter(isWay)
-  const parkingNodes = elements.filter(isBikeParking)
-  const repairNodes = elements.filter(isBikeRepair)
+  // Derived from ~2,700 OSM elements, so recomputing them on every render (opening a
+  // sheet, toggling report mode) was rebuilding the whole overlay tree for nothing.
+  const ways = useMemo(() => elements.filter(isWay), [elements])
+  const parkingNodes = useMemo(() => elements.filter(isBikeParking), [elements])
+  const repairNodes = useMemo(() => elements.filter(isBikeRepair), [elements])
+  const cyclewayRuns = useMemo(() => {
+    const runs = toCyclewayRuns(ways)
+    console.log(`[OSM] Merged ${ways.length} ways into ${runs.length} polylines`)
+    return runs
+  }, [ways])
+
+  // Recomputed once per settled gesture, never mid-gesture: onRegionChangeComplete
+  // fires after the pan or zoom finishes.
+  const cyclewayPaths = useMemo(() => {
+    const paths = visibleCyclewayPaths(cyclewayRuns, viewport, windowWidth)
+    const points = paths.reduce((sum, p) => sum + p.coordinates.length, 0)
+    console.log(`[OSM] Drawing ${paths.length}/${cyclewayRuns.length} polylines, ${points} points`)
+    return paths
+  }, [cyclewayRuns, viewport, windowWidth])
 
   const handleMapPress = (event: MapPressEvent) => {
     if (!reporting) return
@@ -83,19 +101,16 @@ export function CyclingMap() {
         showsUserLocation
         showsMyLocationButton
         onPress={handleMapPress}
+        onRegionChangeComplete={setViewport}
       >
-        {ways.map(way => {
-          const coords = wayToLatLngs(way)
-          if (coords.length < 2) return null
-          return (
-            <Polyline
-              key={way.id}
-              coordinates={coords}
-              strokeColor={CYCLEWAY_COLOUR}
-              strokeWidth={3}
-            />
-          )
-        })}
+        {cyclewayPaths.map(path => (
+          <Polyline
+            key={path.id}
+            coordinates={path.coordinates}
+            strokeColor={CYCLEWAY_COLOUR}
+            strokeWidth={3}
+          />
+        ))}
 
         {parkingNodes.map(node => (
           <Marker
@@ -103,6 +118,7 @@ export function CyclingMap() {
             coordinate={{ latitude: node.lat, longitude: node.lon }}
             pinColor={PARKING_COLOUR}
             title="Bike Parking"
+            tracksViewChanges={false}
           />
         ))}
 
@@ -112,6 +128,7 @@ export function CyclingMap() {
             coordinate={{ latitude: node.lat, longitude: node.lon }}
             pinColor={REPAIR_COLOUR}
             title="Bike Repair"
+            tracksViewChanges={false}
           />
         ))}
 
@@ -121,6 +138,7 @@ export function CyclingMap() {
             coordinate={{ latitude: feature.coordinates.lat, longitude: feature.coordinates.lng }}
             pinColor={FEATURE_TYPE_META[feature.type].color}
             onPress={() => setSelectedFeature(feature)}
+            tracksViewChanges={false}
           />
         ))}
       </MapView>

@@ -23,6 +23,8 @@ function getDoc(name) {
   return map.setIfUndefined(docs, name, () => {
     const doc = new Y.Doc()
     doc.awareness = new awarenessProtocol.Awareness(doc)
+    // the relay isn't a peer, so don't advertise an awareness state for it
+    doc.awareness.setLocalState(null)
     doc.conns = new Map()
 
     doc.on('update', update => {
@@ -33,8 +35,14 @@ function getDoc(name) {
       doc.conns.forEach((_, conn) => send(conn, message))
     })
 
-    doc.awareness.on('update', ({ added, updated, removed }) => {
+    doc.awareness.on('update', ({ added, updated, removed }, origin) => {
       const changedClients = added.concat(updated, removed)
+      // track which client ids each connection owns so they can be removed on close
+      const controlled = origin !== null ? doc.conns.get(origin) : undefined
+      if (controlled) {
+        added.forEach(id => controlled.add(id))
+        removed.forEach(id => controlled.delete(id))
+      }
       const encoder = encoding.createEncoder()
       encoding.writeVarUint(encoder, messageAwareness)
       encoding.writeVarUint8Array(encoder, awarenessProtocol.encodeAwarenessUpdate(doc.awareness, changedClients))
